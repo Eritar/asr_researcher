@@ -1,0 +1,8 @@
+# One term per line. Used as hotwords by the qwen3 engine (ASR_ENGINE=qwen3) to bias
+# recognition toward your domain vocabulary. Parakeet ignores this file.
+CRISPR-Cas9
+Schrödinger-Gleichung
+Hamiltonian
+eigenvalue
+Bose-Einstein condensate
+transcriptome

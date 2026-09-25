@@ -1,0 +1,20 @@
+[project]
+name = "call-assist"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "numpy>=2.5.3",
+    "sherpa-onnx>=1.13.8",
+    "sherpa-onnx-core==1.13.8",
+    "uvicorn[standard]>=0.53.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

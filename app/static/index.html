@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Call Assist</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1f; --muted: #7d7d82; --line: #e4e4e0;
+    --accent: #2f6fdf; --accent-soft: #e6eefc; --hover: #f0f0ec; --ok: #2e9d57; --err: #d64545; --warn: #c98a1b;
+    --err-soft: #fbeaea; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151517; --panel: #1d1d20; --text: #ececef; --muted: #8e8e95; --line: #2d2d31;
+      --accent: #6f9cff; --accent-soft: #24304a; --hover: #26262a; --err-soft: #3a2224;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif;
+         display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--line);
+           background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 6px 0 0; font-weight: 650; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; flex: none; }
+  .dot.ok { background: var(--ok); } .dot.err { background: var(--err); } .dot.warn { background: var(--warn); }
+  #status { color: var(--muted); font-size: 13px; max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #meter { width: 56px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; flex: none; }
+  #meter div { height: 100%; width: 0; background: var(--ok); transition: width .12s linear; }
+  .spacer { flex: 1; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 4px 11px; cursor: pointer; white-space: nowrap; }
+  button:hover { background: var(--hover); }
+  button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.link { border: 0; background: none; color: var(--accent); padding: 0; }
+  #model-btn { font: 12px var(--mono); color: var(--muted); max-width: 40ch; overflow: hidden; text-overflow: ellipsis; }
+  input[type=text], input[type=password], select, textarea {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; width: 100%; }
+  textarea { resize: vertical; min-height: 64px; }
+  #banner { display: flex; gap: 12px; align-items: center; padding: 8px 16px; background: var(--err-soft);
+            border-bottom: 1px solid var(--line); font-size: 14px; flex-wrap: wrap; }
+  #banner span { flex: 1; min-width: 200px; overflow-wrap: anywhere; }
+  main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); min-height: 0; }
+  #transcript { overflow-y: auto; padding: 14px 18px 40vh; border-right: 1px solid var(--line); }
+  .utt { display: flex; gap: 12px; padding: 5px 8px; margin: 0 -8px; border-radius: 7px; cursor: pointer; }
+  .utt:hover { background: var(--hover); }
+  .utt.sel { background: var(--accent-soft); }
+  .utt.asked { box-shadow: inset 3px 0 var(--accent); }
+  .utt .t { color: var(--muted); font: 12px/1.9 var(--mono); flex: none; }
+  .utt .x { flex: 1; }
+  .utt.partial { cursor: default; color: var(--muted); font-style: italic; }
+  .utt.partial:hover { background: none; }
+  .empty { color: var(--muted); padding: 30px 8px; text-align: center; }
+  aside { display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+  #quote { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); }
+  #quote blockquote { margin: 0 0 10px; padding-left: 10px; border-left: 3px solid var(--accent); }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  #answer { flex: 1; overflow-y: auto; padding: 14px 18px; }
+  #answer .q { color: var(--accent); font-weight: 600; margin: 16px 0 4px; }
+  #answer p { margin: 0 0 10px; } #answer ul, #answer ol { margin: 0 0 10px; padding-left: 22px; }
+  #answer h4 { margin: 12px 0 6px; font-size: 15px; }
+  #answer code { font: 13px var(--mono); background: var(--hover); padding: 1px 4px; border-radius: 4px; }
+  #answer pre { background: var(--hover); padding: 10px; border-radius: 7px; overflow-x: auto; }
+  #answer pre code { background: none; padding: 0; }
+  #answer .err { color: var(--err); }
+  .cursor::after { content: "▍"; color: var(--accent); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #meta { color: var(--muted); font-size: 12px; padding: 0 18px 6px; min-height: 18px; }
+  form#follow { display: flex; gap: 8px; padding: 10px 18px 14px; border-top: 1px solid var(--line); }
+  .hint, small { color: var(--muted); font-size: 13px; }
+  kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+  dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(640px, calc(100vw - 32px));
+           max-height: calc(100vh - 48px); background: var(--panel); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 50px); }
+  dialog .body { overflow-y: auto; padding: 4px 22px 10px; }
+  dialog h2 { font-size: 17px; margin: 0; padding: 16px 22px 8px; }
+  dialog h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 8px; }
+  .field { margin-bottom: 12px; }
+  .field > label { display: block; font-weight: 550; font-size: 14px; margin-bottom: 4px; }
+  .field small { display: block; margin-top: 3px; }
+  .inline { display: flex; gap: 6px; }
+  .inline > input, .inline > select { flex: 1; min-width: 0; }
+  .ok-text { color: var(--ok); } .err-text { color: var(--err); }
+  #session-btn { border: 0; background: none; color: var(--muted); font-size: 13px; padding: 2px 4px; max-width: 30ch;
+                 overflow: hidden; text-overflow: ellipsis; }
+  #session-btn:hover { color: var(--text); }
+  [data-mode].has::after { content: " •"; color: var(--accent); }
+  [data-mode].on.has::after { color: inherit; }
+  .saved-note { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .sess { border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; margin-bottom: 8px; }
+  .sess.current { border-color: var(--accent); }
+  .sess .top { display: flex; gap: 8px; align-items: baseline; }
+  .sess .title { font-weight: 600; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .sess .when, .sess .counts { color: var(--muted); font-size: 12px; }
+  .sess .preview { color: var(--muted); font-size: 13px; margin: 3px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sess .row button, .sess .row a { font-size: 13px; padding: 2px 9px; }
+  a.btn { border: 1px solid var(--line); border-radius: 7px; color: inherit; text-decoration: none; }
+  a.btn:hover { background: var(--hover); }
+  label.check { display: flex; gap: 8px; align-items: center; font-size: 14px; margin-top: 6px; font-weight: normal; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .chips button { font-size: 12px; padding: 2px 8px; border-radius: 12px; }
+  dialog footer { display: flex; gap: 8px; align-items: center; padding: 12px 22px; border-top: 1px solid var(--line); }
+  dialog footer .msg { flex: 1; font-size: 13px; }
+  input[type=range] { width: 100%; }
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    #transcript { border-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 20px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Call Assist</h1>
+  <button id="session-btn" title="Saved sessions">…</button>
+  <span class="dot" id="dot"></span><span id="status">connecting…</span>
+  <div id="meter" title="Input level"><div></div></div>
+  <span class="spacer"></span>
+  <button id="model-btn" title="LLM used for explanations (click to change)">…</button>
+  <button id="new-session" title="Start a new session (the current one stays saved)">New</button>
+  <button id="open-sessions">Sessions</button>
+  <button id="pause">Pause</button>
+  <button id="open-settings">Settings</button>
+</header>
+<div id="banner" hidden><span id="banner-text"></span><button id="retry">Retry</button><button id="banner-settings">Settings</button></div>
+<main>
+  <section id="transcript"><div class="empty" id="empty">Waiting for speech…</div></section>
+  <aside>
+    <div id="quote">
+      <blockquote id="sentence" class="hint">Click a sentence to explain it. <kbd>1</kbd> Explain · <kbd>2</kbd> Expand · <kbd>3</kbd> Answer · <kbd>Esc</kbd> stop</blockquote>
+      <div class="row">
+        <button data-mode="explain" class="on">Explain</button>
+        <button data-mode="expand">Expand</button>
+        <button data-mode="answer">Answer</button>
+        <span class="spacer"></span>
+        <button id="regen" hidden title="Ask the model again and replace the saved answer">Regenerate</button>
+        <button id="stop" hidden>Stop</button>
+      </div>
+    </div>
+    <div id="answer"></div>
+    <div id="meta"></div>
+    <form id="follow"><input type="text" id="question" placeholder="Ask a follow-up about the selected sentence…" autocomplete="off"><button>Ask</button></form>
+  </aside>
+</main>
+
+<dialog id="sessions">
+  <form method="dialog" id="sessions-form">
+    <h2>Sessions</h2>
+    <div class="body">
+      <div class="field">
+        <label for="sess-title">Current session name</label>
+        <div class="inline"><input type="text" id="sess-title"><button type="button" id="sess-rename">Rename</button></div>
+      </div>
+      <div id="sess-list"></div>
+      <small id="sess-dir"></small>
+    </div>
+    <footer>
+      <span class="msg" id="sess-msg"></span>
+      <button type="button" id="sess-new">New session</button>
+      <button type="button" id="sess-close" class="primary">Close</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog id="settings">
+  <form id="settings-form" method="dialog">
+    <h2>Settings</h2>
+    <div class="body">
+      <h3>Explanations (OpenRouter)</h3>
+      <div class="field">
+        <label for="s-key">API key</label>
+        <div class="inline">
+          <input type="password" id="s-key" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…">
+          <button type="button" id="s-key-show">Show</button>
+          <button type="button" id="s-key-test">Test</button>
+        </div>
+        <small id="s-key-info">Create one at openrouter.ai/keys. It is stored only on this computer.</small>
+      </div>
+      <div class="field">
+        <label for="s-model">Model</label>
+        <input type="text" id="s-model" list="s-models" spellcheck="false" autocomplete="off" placeholder="provider/model">
+        <datalist id="s-models"></datalist>
+        <small id="s-model-info">&nbsp;</small>
+        <div class="chips" id="s-model-chips"></div>
+      </div>
+      <div class="field">
+        <label for="s-provider">Provider</label>
+        <select id="s-provider"></select>
+        <label class="check" id="s-fallback-row"><input type="checkbox" id="s-fallbacks"> If this provider fails, fall back to others</label>
+        <small id="s-provider-info">Which company runs the model. OpenRouter balances price and uptime by default.</small>
+      </div>
+      <div class="field">
+        <label for="s-reasoning">Thinking</label>
+        <select id="s-reasoning"></select>
+        <small>Many models “think” silently before answering, which delays the first word by several seconds.</small>
+      </div>
+      <div class="field">
+        <label for="s-answer-lang">Answer language</label>
+        <select id="s-answer-lang"></select>
+      </div>
+      <div class="field">
+        <label for="s-about">About you</label>
+        <textarea id="s-about" rows="2" placeholder="e.g. Physicist working on quantum optics; skip basics in physics, explain biology terms in more detail."></textarea>
+        <small>Sent with every question so answers are pitched at your level.</small>
+      </div>
+
+      <h3>Transcription</h3>
+      <div class="field">
+        <label for="s-source">Listen to</label>
+        <div class="inline">
+          <select id="s-source"></select>
+          <button type="button" id="s-source-refresh" title="Refresh the list">↻</button>
+        </div>
+        <input type="text" id="s-file" placeholder="/path/to/recording.wav" hidden style="margin-top:6px">
+        <small id="s-source-hint"></small>
+      </div>
+      <div class="field">
+        <label for="s-engine">Speech model</label>
+        <select id="s-engine"></select>
+        <small id="s-engine-hint"></small>
+      </div>
+      <div class="field">
+        <label for="s-lang">Spoken language</label>
+        <select id="s-lang"></select>
+      </div>
+      <div class="field">
+        <label for="s-silence">Pause that ends a sentence: <span id="s-silence-val"></span></label>
+        <input type="range" id="s-silence" min="0.15" max="1.2" step="0.05">
+        <small>Shorter = text appears sooner, but sentences get split more often.</small>
+      </div>
+      <div class="field">
+        <label for="s-glossary">Glossary</label>
+        <textarea id="s-glossary" rows="4" spellcheck="false" placeholder="One term per line"></textarea>
+        <small>Technical terms and names to recognise. Used by the Qwen3 speech model.</small>
+      </div>
+      <h3>Sessions</h3>
+      <div class="field">
+        <label for="s-sessions-dir">Save sessions in</label>
+        <input type="text" id="s-sessions-dir" spellcheck="false">
+        <small>Every sentence and answer is saved here as it happens (one .jsonl file per session). New sessions use the new folder.</small>
+      </div>
+      <small id="s-path"></small>
+    </div>
+    <footer>
+      <span class="msg" id="s-msg"></span>
+      <button type="button" id="s-cancel">Cancel</button>
+      <button type="submit" class="primary" id="s-save">Save</button>
+    </footer>
+  </form>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const tx = $("transcript"), answerEl = $("answer"), meta = $("meta");
+let ws, mode = "explain", selected = null, partialEl = null;
+let reqSeq = 0, activeReq = null, state = {}, hasKey = false, currentModel = "";
+let session = null;
+// Saved answers in this session: utt_id -> Set of modes. The server stores the text itself.
+let answered = new Map();
+
+const ENGINE_INFO = {
+  parakeet: "Parakeet v3 · fastest, auto-detects English/German",
+  qwen3: "Qwen3-ASR · uses the glossary, about 4× slower",
+  cohere: "Cohere Transcribe · most accurate, heavy, fixed language",
+  canary: "Canary 180M · tiny, for weak CPUs, fixed language",
+};
+
+function setStatus(text, cls) { $("status").textContent = text; $("status").title = text; $("dot").className = "dot " + (cls || ""); }
+function fmtT(ts) { return new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+function nearBottom() { return tx.scrollHeight - tx.scrollTop - tx.clientHeight < window.innerHeight * 0.45; }
+
+function sourceLabel(s) {
+  if (!s || s === "system") return "system audio";
+  if (s.startsWith("app:")) return s.slice(4).split(".").pop();
+  if (s.startsWith("pulse:")) return s.slice(6);
+  if (s.startsWith("file:")) return s.split("/").pop();
+  return s;
+}
+
+function renderState() {
+  const s = state;
+  const err = s.engine_status === "error" || s.audio_status === "error";
+  $("banner").hidden = !err;
+  if (err) $("banner-text").textContent = s.message;
+  if (err) setStatus("Stopped: " + (s.engine_status === "error" ? "speech model error" : "audio error"), "err");
+  else if (s.engine_status === "loading") setStatus(`Loading ${s.engine}…`, "warn");
+  else if (s.audio_status === "waiting") setStatus(s.message || "Waiting for audio…", "warn");
+  else if (s.audio_status === "ended") setStatus("Audio source ended", "warn");
+  else if (s.paused) setStatus("Paused", "warn");
+  else if (s.audio_status === "capturing" && s.engine_status === "ready") setStatus(`Listening to ${sourceLabel(s.audio)} · ${s.engine}`, "ok");
+  else setStatus("Starting…", "warn");
+  $("pause").textContent = s.paused ? "Resume" : "Pause";
+  $("pause").classList.toggle("on", !!s.paused);
+}
+
+let silentSince = null;
+function renderLevel(db) {
+  const pct = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+  $("meter").firstChild.style.width = pct + "%";
+  if (db > -100) silentSince = null; else silentSince ??= Date.now();
+  const silentLong = silentSince && Date.now() - silentSince > 5000;
+  $("meter").title = silentLong
+    ? "No sound at all. If audio is playing: on macOS allow “System Audio Recording” for your terminal app (System Settings → Privacy & Security), then press Retry."
+    : `Input level ${db.toFixed(0)} dB`;
+}
+
+function utteranceEl(ev, partial) {
+  const d = document.createElement("div");
+  d.className = "utt" + (partial ? " partial" : "");
+  d.dataset.id = ev.utt_id;
+  d.innerHTML = `<span class="t"></span><span class="x"></span>`;
+  d.querySelector(".t").textContent = fmtT(ev.ts);
+  d.querySelector(".x").textContent = ev.text;
+  if (!partial) {
+    d.title = `${ev.dur}s audio · decoded in ${ev.asr_ms} ms` + (ev.latency_ms ? ` · ~${ev.latency_ms} ms after speech end` : "");
+    d.addEventListener("click", () => select(d, ev));
+  }
+  return d;
+}
+
+function addFinal(ev) {
+  $("empty")?.remove();
+  const stick = nearBottom();
+  const d = utteranceEl(ev, false);
+  if (partialEl && partialEl.dataset.id == ev.utt_id) { partialEl.replaceWith(d); partialEl = null; }
+  else tx.insertBefore(d, partialEl);
+  if (stick) tx.scrollTop = tx.scrollHeight;
+}
+
+function setPartial(ev) {
+  $("empty")?.remove();
+  if (!ev.text) return;
+  const stick = nearBottom();
+  const d = utteranceEl(ev, true);
+  if (partialEl) partialEl.replaceWith(d); else tx.appendChild(d);
+  partialEl = d;
+  if (stick) tx.scrollTop = tx.scrollHeight;
+}
+
+function clearTranscript() {
+  tx.querySelectorAll(".utt").forEach(n => n.remove());
+  partialEl = null;
+  if (!$("empty")) tx.insertAdjacentHTML("afterbegin", `<div class="empty" id="empty">Waiting for speech…</div>`);
+}
+
+function showNoKey() {
+  answerEl.innerHTML = `<p class="hint">Add your OpenRouter API key in <button class="link" id="nokey-settings">Settings</button> to get explanations.</p>`;
+  $("nokey-settings").onclick = () => openSettings("s-key");
+}
+
+function select(el, ev) {
+  document.querySelectorAll(".utt.sel").forEach(e => e.classList.remove("sel"));
+  el.classList.add("sel");
+  selected = { el, ev };
+  $("sentence").className = "";
+  $("sentence").textContent = ev.text;
+  ask();
+}
+
+function isAnswered(uttId, m) { return answered.get(uttId)?.has(m) ?? false; }
+function markAnswered(uttId, m) {
+  if (!answered.has(uttId)) answered.set(uttId, new Set());
+  answered.get(uttId).add(m);
+  tx.querySelector(`.utt[data-id="${CSS.escape(uttId)}"]`)?.classList.add("asked");
+  renderModeDots();
+}
+function renderModeDots() {
+  document.querySelectorAll("[data-mode]").forEach(b =>
+    b.classList.toggle("has", !!selected && isAnswered(selected.ev.utt_id, b.dataset.mode)));
+}
+
+// Shows the saved answer for (sentence, mode) if there is one; the server generates otherwise.
+function ask(question, regenerate = false) {
+  if (!selected) return;
+  renderModeDots();
+  const cached = !question && !regenerate && isAnswered(selected.ev.utt_id, mode);
+  if (!hasKey && !cached) { showNoKey(); return; }
+  if (activeReq) finishReq();  // detach: the earlier answer keeps generating and gets saved
+  const req_id = ++reqSeq;
+  const body = document.createElement("div"); body.className = "cursor";
+  if (question) {
+    const q = document.createElement("div"); q.className = "q"; q.textContent = question;
+    answerEl.append(q, body);
+  } else answerEl.replaceChildren(body);
+  activeReq = { req_id, turn: { text: "", el: body }, utt_id: selected.ev.utt_id, mode };
+  meta.textContent = cached ? "" : "…";
+  $("stop").hidden = cached;
+  $("regen").hidden = true;
+  ws.send(JSON.stringify({ type: "ask", req_id, utt_id: selected.ev.utt_id, mode,
+                           question: question || "", regenerate }));
+}
+
+function cancel() {
+  if (!activeReq) return;
+  ws.send(JSON.stringify({ type: "cancel", req_id: activeReq.req_id }));
+  finishReq();
+}
+function finishReq(showRegen = false) {
+  if (activeReq) activeReq.turn.el.classList.remove("cursor");
+  activeReq = null; $("stop").hidden = true; $("regen").hidden = !showRegen;
+}
+
+function renderThread(turns) {
+  answerEl.replaceChildren();
+  for (const t of turns) {
+    if (t.q) { const q = document.createElement("div"); q.className = "q"; q.textContent = t.q; answerEl.appendChild(q); }
+    const d = document.createElement("div"); d.innerHTML = md(t.text); answerEl.appendChild(d);
+  }
+}
+
+function onLLM(m) {
+  if (!activeReq || m.req_id !== activeReq.req_id) return;
+  const turn = activeReq.turn;
+  if (m.type === "llm_cached") {
+    renderThread(m.turns);
+    const when = new Date(m.ts * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    meta.textContent = `Saved answer · ${m.model}${m.provider ? ` via ${m.provider}` : ""} · ${when}`;
+    finishReq(true);
+  }
+  else if (m.type === "llm_start") meta.textContent = `${m.model} · waiting…`;
+  else if (m.type === "llm_thinking") meta.textContent = meta.textContent.replace("waiting…", "thinking…");
+  else if (m.type === "llm_ttft") meta.textContent = meta.textContent.replace(/waiting…|thinking…/, (m.provider ? `via ${m.provider} · ` : "") + `first token ${m.ms} ms`);
+  else if (m.type === "llm_delta") {
+    turn.text += m.text;
+    turn.el.innerHTML = md(turn.text);
+    if (answerEl.scrollHeight - answerEl.scrollTop - answerEl.clientHeight < 80) answerEl.scrollTop = answerEl.scrollHeight;
+  } else if (m.type === "llm_done") {
+    if (!m.cancelled) {
+      meta.textContent += ` · done ${(m.ms / 1000).toFixed(1)} s` + (m.saved ? " · saved" : " · NOT saved (see server log)");
+      markAnswered(activeReq.utt_id, activeReq.mode);
+    }
+    finishReq(!m.cancelled);
+  } else if (m.type === "llm_error") {
+    const p = document.createElement("p"); p.className = "err"; p.textContent = m.message;
+    turn.el.appendChild(p);
+    if (/401|auth|key/i.test(m.message)) {
+      const b = document.createElement("button"); b.className = "link"; b.textContent = "Check the API key in Settings";
+      b.onclick = () => openSettings("s-key"); turn.el.appendChild(b);
+    }
+    meta.textContent = "error";
+    finishReq();
+  }
+}
+
+// ---- sessions --------------------------------------------------------------
+function applySession(m) {
+  session = m.session;
+  $("session-btn").textContent = session.title;
+  answered = new Map(Object.entries(m.answered || {}).map(([k, v]) => [k, new Set(v)]));
+  clearTranscript();
+  m.transcript.forEach(addFinal);
+  for (const id of answered.keys()) tx.querySelector(`.utt[data-id="${CSS.escape(id)}"]`)?.classList.add("asked");
+  if (activeReq) finishReq();
+  selected = null;
+  $("sentence").className = "hint";
+  $("sentence").innerHTML = "Click a sentence to explain it. <kbd>1</kbd> Explain · <kbd>2</kbd> Expand · <kbd>3</kbd> Answer · <kbd>Esc</kbd> stop";
+  answerEl.replaceChildren(); meta.textContent = ""; $("regen").hidden = true;
+  renderModeDots();
+  if (!hasKey) showNoKey();
+}
+
+function fmtDate(ts) { return new Date(ts * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); }
+
+async function openSessions() {
+  $("sess-msg").textContent = "";
+  let data;
+  try { data = await api("/api/sessions"); } catch (e) { alert("Could not load sessions: " + e.message); return; }
+  $("sess-title").value = session?.title || "";
+  $("sess-dir").textContent = `Saved in ${data.dir}`;
+  const list = $("sess-list");
+  list.replaceChildren();
+  if (!data.sessions.length) list.innerHTML = `<p class="hint">No saved sessions yet.</p>`;
+  for (const s of data.sessions) {
+    const cur = s.id === data.current;
+    const d = document.createElement("div");
+    d.className = "sess" + (cur ? " current" : "");
+    d.innerHTML = `<div class="top"><span class="title"></span><span class="when"></span></div>
+      <div class="counts"></div><div class="preview"></div>
+      <div class="row">
+        <button type="button" data-act="open"></button>
+        <a class="btn" data-act="md">Export .md</a>
+        <a class="btn" data-act="jsonl">Raw .jsonl</a>
+        <span class="spacer"></span>
+        <button type="button" data-act="del">Delete</button>
+      </div>`;
+    d.querySelector(".title").textContent = s.title;
+    d.querySelector(".when").textContent = fmtDate(s.updated);
+    d.querySelector(".counts").textContent = `${s.sentences} sentences · ${s.answers} saved answers` + (cur ? " · open now" : "");
+    d.querySelector(".preview").textContent = s.preview || "(empty)";
+    const open = d.querySelector('[data-act="open"]');
+    open.textContent = cur ? "Current" : "Open";
+    open.disabled = cur;
+    open.onclick = async () => {
+      try { await api(`/api/sessions/${encodeURIComponent(s.id)}/open`, { method: "POST" }); $("sessions").close(); }
+      catch (e) { $("sess-msg").textContent = e.message; $("sess-msg").className = "msg err-text"; }
+    };
+    for (const fmt of ["md", "jsonl"]) {
+      const a = d.querySelector(`[data-act="${fmt}"]`);
+      a.href = `/api/sessions/${encodeURIComponent(s.id)}/export?fmt=${fmt}`;
+      a.download = `${s.id}.${fmt}`;
+    }
+    const del = d.querySelector('[data-act="del"]');
+    del.onclick = async () => {
+      if (del.dataset.armed !== "1") { del.dataset.armed = "1"; del.textContent = "Click again to delete"; del.classList.add("on"); return; }
+      try { await api(`/api/sessions/${encodeURIComponent(s.id)}`, { method: "DELETE" }); openSessions(); }
+      catch (e) { $("sess-msg").textContent = e.message; $("sess-msg").className = "msg err-text"; }
+    };
+    list.appendChild(d);
+  }
+  if (!$("sessions").open) $("sessions").showModal();
+}
+
+// Tiny markdown renderer: code blocks, inline code, bold/italic, headings, lists, paragraphs.
+function esc(s) { return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
+}
+function md(src) {
+  const out = [], lines = src.split("\n");
+  let list = null, para = [], code = null;
+  const flushPara = () => { if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; } };
+  const flushList = () => { if (list) { out.push(`<${list.tag}>${list.items.map(i => `<li>${inline(i)}</li>`).join("")}</${list.tag}>`); list = null; } };
+  for (const line of lines) {
+    if (code !== null) {
+      if (/^\s*```/.test(line)) { out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`); code = null; }
+      else code.push(line);
+      continue;
+    }
+    let m;
+    if (/^\s*```/.test(line)) { flushPara(); flushList(); code = []; }
+    else if ((m = line.match(/^\s*#{1,6}\s+(.*)/))) { flushPara(); flushList(); out.push(`<h4>${inline(m[1])}</h4>`); }
+    else if ((m = line.match(/^\s*[-*•]\s+(.*)/)) || (m = line.match(/^\s*\d+[.)]\s+(.*)/))) {
+      flushPara();
+      const tag = /^\s*\d/.test(line) ? "ol" : "ul";
+      if (!list || list.tag !== tag) { flushList(); list = { tag, items: [] }; }
+      list.items.push(m[1]);
+    }
+    else if (!line.trim()) { flushPara(); flushList(); }
+    else if (list && /^\s{2,}/.test(line)) list.items[list.items.length - 1] += " " + line.trim();
+    else { flushList(); para.push(line.trim()); }
+  }
+  if (code !== null) out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`);
+  flushPara(); flushList();
+  return out.join("");
+}
+
+// ---- settings ------------------------------------------------------------
+let loaded = null, models = null;
+const QUICK_MODELS = ["google/gemini-3.8-flash", "qwen/qwen3.8-flash", "deepseek/deepseek-v4.1-flash", "openai/gpt-5.6-luna", "anthropic/claude-sonnet-5"];
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
+  return body;
+}
+function fillSelect(sel, entries, value) {
+  sel.replaceChildren(...entries.map(([v, label, disabled]) => {
+    const o = document.createElement("option"); o.value = v; o.textContent = label; o.disabled = !!disabled; return o;
+  }));
+  sel.value = value;
+}
+
+async function loadSources(current) {
+  const sel = $("s-source");
+  let list = [{ id: "system", label: "All system audio" }];
+  try { list = await api("/api/audio-sources"); } catch {}
+  const entries = list.map(s => [s.id, s.label]);
+  if (current && !current.startsWith("file:") && !list.some(s => s.id === current)) entries.push([current, `${sourceLabel(current)} (not running)`]);
+  entries.push(["file:", "Audio file (replay a recording)…"]);
+  fillSelect(sel, entries, current?.startsWith("file:") ? "file:" : current);
+  $("s-file").value = current?.startsWith("file:") ? current.slice(5) : "";
+  onSourceChange();
+}
+function onSourceChange() {
+  const isFile = $("s-source").value === "file:";
+  $("s-file").hidden = !isFile;
+  const mac = loaded?.options.platform === "mac";
+  $("s-source-hint").textContent = isFile ? "Played back in real time, for testing." :
+    mac ? "Pick a single app (Teams, Zoom, browser…) to ignore music and notifications. Apps appear once they have used audio."
+        : "“All system audio” records what your default output plays. Your microphone is not recorded.";
+}
+
+function modelInfo() {
+  const id = $("s-model").value.trim();
+  const m = models?.find(x => x.id === id);
+  const price = (v) => v < 0.01 ? "<$0.01" : `$${v.toFixed(2)}`;
+  $("s-model-info").textContent = m
+    ? `${m.name} · ${price(m.prompt)} in / ${price(m.completion)} out per 1M tokens · ${Math.round((m.context || 0) / 1000)}k context`
+    : (models && id ? "Not in OpenRouter's model list. Check the id." : " ");
+}
+async function loadModels() {
+  if (models) return;
+  try {
+    models = await api("/api/models");
+    $("s-models").replaceChildren(...models.map(m => { const o = document.createElement("option"); o.value = m.id; o.label = m.name; return o; }));
+    const avail = QUICK_MODELS.filter(id => models.some(m => m.id === id));
+    $("s-model-chips").replaceChildren(...avail.map(id => {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = id.split("/")[1];
+      b.title = id; b.onclick = () => { $("s-model").value = id; onModelInput(); }; return b;
+    }));
+    modelInfo();
+  } catch (e) { $("s-model-info").textContent = "Could not load the model list: " + e.message; }
+}
+
+// Provider select values: "sort:<latency|throughput|price|>" = automatic, "ep:<tag>" = one endpoint.
+let endpointsFor = null, endpointsTimer = null, providerTouched = false;
+function providerValue(provider, sort) { return provider ? "ep:" + provider : "sort:" + sort; }
+
+async function loadEndpoints(model, value) {
+  const sel = $("s-provider");
+  value ??= sel.value;
+  const autos = Object.entries(loaded.options.provider_sorts).map(([k, label]) =>
+    ["sort:" + k, `Automatic · ${label}` + (k === "latency" ? " (best for live use)" : k === "" ? " (OpenRouter default)" : "")]);
+  fillSelect(sel, autos, value.startsWith("sort:") ? value : "sort:");
+  endpointsFor = model;
+  if (!model) return;
+  $("s-provider-info").textContent = "Loading providers…";
+  let eps;
+  try { eps = await api(`/api/endpoints?model=${encodeURIComponent(model)}`); }
+  catch (e) { if (endpointsFor === model) $("s-provider-info").textContent = e.message; return; }
+  if (endpointsFor !== model) return;  // model changed meanwhile
+  if (providerTouched) value = sel.value;  // keep a choice made while the list was loading
+  const price = (v) => v < 0.01 ? "<$0.01" : `$${v.toFixed(2)}`;
+  const group = document.createElement("optgroup");
+  group.label = `Only one provider (${eps.length} serve ${model})`;
+  for (const e of eps) {
+    const o = document.createElement("option");
+    o.value = "ep:" + e.tag;
+    const variant = e.tag.includes("/") ? ` (${e.tag.split("/").slice(1).join("/")})` : "";
+    o.textContent = `${e.provider}${variant} · ${price(e.prompt)} / ${price(e.completion)} per 1M`
+      + (e.uptime != null ? ` · ${e.uptime.toFixed(1)}% up` : "") + (e.status < 0 ? " · degraded" : "");
+    group.appendChild(o);
+  }
+  sel.appendChild(group);
+  if (value.startsWith("ep:") && !eps.some(e => "ep:" + e.tag === value)) {
+    const o = document.createElement("option"); o.value = value;
+    o.textContent = `${value.slice(3)} (does not serve this model)`; sel.appendChild(o);
+  }
+  sel.value = value;
+  onProviderChange();
+}
+function onProviderChange() {
+  const v = $("s-provider").value, specific = v.startsWith("ep:");
+  $("s-fallback-row").hidden = !specific;
+  const opt = $("s-provider").selectedOptions[0];
+  $("s-provider-info").textContent =
+    opt?.textContent.includes("does not serve") ? "This provider does not offer the selected model. Pick another one."
+    : specific ? "Requests go to this provider only" + ($("s-fallbacks").checked ? ", falling back to others if it is down." : ". If it is down, you get an error.")
+    : v === "sort:latency" ? "Picks the provider with the fastest first token right now."
+    : "Which company runs the model. OpenRouter balances price and uptime by default.";
+}
+function onModelInput() {
+  modelInfo();
+  clearTimeout(endpointsTimer);
+  const id = $("s-model").value.trim();
+  // Only look up ids that exist (once the model list is loaded) to avoid a request per keystroke.
+  if (models && !models.some(m => m.id === id)) return;
+  endpointsTimer = setTimeout(() => loadEndpoints(id), 250);
+}
+
+function keyPlaceholder(v) {
+  $("s-key").value = "";
+  $("s-key").placeholder = v.has_api_key ? `saved (${v.api_key_hint || "set"}). Type to replace` : "sk-or-v1-…";
+  $("s-key-info").textContent = v.has_api_key ? "Key saved on this computer. Press Test to check it."
+                                               : "Create one at openrouter.ai/keys. It is stored only on this computer.";
+  $("s-key-info").className = "";
+}
+
+async function openSettings(focusId) {
+  $("s-msg").textContent = ""; $("s-msg").className = "msg";
+  try { loaded = await api("/api/settings"); }
+  catch (e) { alert("Could not load settings: " + e.message); return; }
+  const v = loaded.values, o = loaded.options;
+  keyPlaceholder(v);
+  $("s-model").value = v.openrouter_model;
+  $("s-fallbacks").checked = v.openrouter_fallbacks;
+  fillSelect($("s-reasoning"), Object.entries(o.reasoning_modes), v.openrouter_reasoning);
+  providerTouched = false;
+  loadEndpoints(v.openrouter_model, providerValue(v.openrouter_provider, v.openrouter_sort));
+  fillSelect($("s-answer-lang"), Object.entries(o.answer_languages), v.answer_language);
+  $("s-about").value = v.about_me;
+  fillSelect($("s-engine"), o.engines.map(e => [e.id, (ENGINE_INFO[e.id] || e.id) + (e.installed ? "" : " (not downloaded)"), !e.installed]), v.asr_engine);
+  const missing = o.engines.filter(e => !e.installed).map(e => e.id);
+  $("s-engine-hint").textContent = missing.length ? `To add more: scripts/download_models.sh ${missing.join(" ")}` : "";
+  fillSelect($("s-lang"), Object.entries(o.languages), v.language);
+  $("s-silence").value = v.vad_min_silence_s; $("s-silence-val").textContent = `${(+v.vad_min_silence_s).toFixed(2)} s`;
+  $("s-glossary").value = v.glossary;
+  $("s-sessions-dir").value = v.sessions_dir;
+  $("s-path").textContent = `Saved in ${loaded.config_path}`;
+  $("settings").showModal();
+  if (focusId) $(focusId).focus();
+  loadSources(v.audio_source);
+  loadModels();
+}
+
+function collectChanges() {
+  const v = loaded.values, c = {};
+  const put = (name, val) => { if (String(val) !== String(v[name])) c[name] = val; };
+  if ($("s-key").value.trim()) c.openrouter_api_key = $("s-key").value.trim();
+  put("openrouter_model", $("s-model").value.trim());
+  const pv = $("s-provider").value;
+  put("openrouter_provider", pv.startsWith("ep:") ? pv.slice(3) : "");
+  put("openrouter_sort", pv.startsWith("sort:") ? pv.slice(5) : "");
+  put("openrouter_fallbacks", $("s-fallbacks").checked);
+  put("openrouter_reasoning", $("s-reasoning").value);
+  put("answer_language", $("s-answer-lang").value);
+  put("about_me", $("s-about").value.trim());
+  put("asr_engine", $("s-engine").value);
+  put("language", $("s-lang").value);
+  put("vad_min_silence_s", +$("s-silence").value);
+  const src = $("s-source").value === "file:" ? "file:" + $("s-file").value.trim() : $("s-source").value;
+  put("audio_source", src);
+  if ($("s-glossary").value !== v.glossary) c.glossary = $("s-glossary").value;
+  put("sessions_dir", $("s-sessions-dir").value.trim());
+  return c;
+}
+
+$("settings-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const changes = collectChanges();
+  if (changes.audio_source === "file:") { $("s-msg").textContent = "Enter the path of the audio file."; $("s-msg").className = "msg err-text"; return; }
+  if (!Object.keys(changes).length) { $("settings").close(); return; }
+  if (("language" in changes || "asr_engine" in changes) && ["cohere", "canary"].includes(changes.asr_engine || loaded.values.asr_engine)
+      && !(changes.language ?? loaded.values.language)) {
+    $("s-msg").textContent = "This speech model needs a fixed spoken language."; $("s-msg").className = "msg err-text"; return;
+  }
+  $("s-save").disabled = true;
+  $("s-msg").className = "msg"; $("s-msg").textContent = "Saving…";
+  try {
+    const r = await api("/api/settings", { method: "PUT", body: JSON.stringify(changes) });
+    hasKey = r.values.has_api_key;
+    setModel(r.values.openrouter_model, routingLabel(r.values));
+    $("settings").close();
+    if (hasKey && answerEl.querySelector("#nokey-settings")) answerEl.innerHTML = "";
+  } catch (err) {
+    $("s-msg").textContent = err.message; $("s-msg").className = "msg err-text";
+  } finally { $("s-save").disabled = false; }
+});
+$("s-cancel").onclick = () => $("settings").close();
+$("s-source").onchange = onSourceChange;
+$("s-source-refresh").onclick = () => loadSources($("s-source").value === "file:" ? "file:" + $("s-file").value : $("s-source").value);
+$("s-model").addEventListener("input", onModelInput);
+$("s-provider").onchange = () => { providerTouched = true; onProviderChange(); };
+$("s-fallbacks").onchange = onProviderChange;
+$("s-silence").addEventListener("input", () => $("s-silence-val").textContent = `${(+$("s-silence").value).toFixed(2)} s`);
+$("s-key-show").onclick = () => {
+  const k = $("s-key"); k.type = k.type === "password" ? "text" : "password";
+  $("s-key-show").textContent = k.type === "password" ? "Show" : "Hide";
+};
+$("s-key-test").onclick = async () => {
+  const info = $("s-key-info");
+  info.className = ""; info.textContent = "Checking…";
+  try {
+    const r = await api("/api/test-key", { method: "POST", body: JSON.stringify({ key: $("s-key").value.trim() }) });
+    if (!r.ok) { info.textContent = r.error; info.className = "err-text"; return; }
+    const credit = r.limit_remaining != null ? ` · $${(+r.limit_remaining).toFixed(2)} left of $${(+r.limit).toFixed(2)} limit` : "";
+    info.textContent = `✓ Key works${r.label ? ` (${r.label})` : ""} · $${(+(r.usage || 0)).toFixed(2)} used${credit}`;
+    info.className = "ok-text";
+  } catch (e) { info.textContent = e.message; info.className = "err-text"; }
+};
+
+function routingLabel(v) {
+  return v.openrouter_provider || (v.openrouter_sort ? `auto, ${loaded?.options.provider_sorts[v.openrouter_sort] ?? v.openrouter_sort}` : "");
+}
+function setModel(m, routing) {
+  currentModel = m;
+  $("model-btn").textContent = routing ? `${m} @ ${routing}` : m;
+}
+
+// ---- wiring ----------------------------------------------------------------
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+}
+document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => { setMode(b.dataset.mode); ask(); }));
+$("stop").addEventListener("click", cancel);
+$("follow").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const q = $("question").value.trim();
+  if (!q || !selected) return;
+  $("question").value = "";
+  ask(q);
+});
+$("pause").onclick = () => ws.send(JSON.stringify({ type: "pause", paused: !state.paused }));
+$("new-session").onclick = () => api("/api/sessions/new", { method: "POST" });
+$("open-sessions").onclick = openSessions;
+$("session-btn").onclick = openSessions;
+$("regen").onclick = () => ask(undefined, true);
+$("sess-close").onclick = () => $("sessions").close();
+$("sess-new").onclick = async () => { await api("/api/sessions/new", { method: "POST" }); openSessions(); };
+$("sess-rename").onclick = async () => {
+  const title = $("sess-title").value.trim();
+  if (!title || !session) return;
+  try { await api(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "PATCH", body: JSON.stringify({ title }) }); openSessions(); }
+  catch (e) { $("sess-msg").textContent = e.message; $("sess-msg").className = "msg err-text"; }
+};
+$("open-settings").onclick = () => openSettings();
+$("banner-settings").onclick = () => openSettings("s-source");
+$("model-btn").onclick = () => openSettings("s-model");
+$("retry").onclick = async () => { $("retry").disabled = true; try { await api("/api/restart", { method: "POST" }); } finally { $("retry").disabled = false; } };
+document.addEventListener("keydown", (e) => {
+  if ($("settings").open || $("sessions").open) return;
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) { if (e.key === "Escape") e.target.blur(); return; }
+  const modes = { "1": "explain", "2": "expand", "3": "answer" };
+  if (modes[e.key]) { setMode(modes[e.key]); ask(); }
+  else if (e.key === "Escape") cancel();
+});
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    switch (m.type) {
+      case "hello":
+        state = m.state; renderState();
+        hasKey = m.has_api_key; setModel(m.model, m.routing);
+        applySession(m);
+        break;
+      case "session": applySession(m); break;
+      case "session_title": session.title = m.title; $("session-btn").textContent = m.title; break;
+      case "answered": markAnswered(m.utt_id, m.mode); break;
+      case "status_note": setStatus(m.message, "err"); break;
+      case "state": state = m; renderState(); break;
+      case "level": renderLevel(m.db); break;
+      case "model": setModel(m.model, m.routing); break;
+      case "partial": setPartial(m); break;
+      case "final": addFinal(m); break;
+      default: if (m.type.startsWith("llm_")) onLLM(m);
+    }
+  };
+  ws.onclose = () => { setStatus("Disconnected from the app, retrying…", "err"); finishReq(); setTimeout(connect, 1000); };
+}
+connect();
+</script>
+</body>
+</html>
